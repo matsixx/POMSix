@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>POMSix</RootNamespace>
+    <AssemblyName>POMSix</AssemblyName>
+    <Nullable>disable</Nullable>
+    <Authors>matsix</Authors>
+    <AssemblyVersion>0.1.0</AssemblyVersion>
+    <FileVersion>$(AssemblyVersion)</FileVersion>
+    <Version>$(AssemblyVersion)</Version>
+    <Configurations>Debug;Release</Configurations>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- The Assets/ folder will hold the POM shader source (built into an AssetBundle in the Unity
+       project), not C# to compile. -->
+  <ItemGroup>
+    <Compile Remove="Assets\**\*.cs" />
+  </ItemGroup>
+
+  <!-- References resolve from the local libs/ folder (DLLs copied from the game Managed + BepInEx)
+       so the project builds standalone. JBooth.MicroSplat.Core is the game's own MicroSplat runtime —
+       terrain materials/keywords are typed access, no reflection needed. -->
+  <ItemGroup>
+    <Reference Include="0Harmony"><HintPath>libs\0Harmony.dll</HintPath></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>libs\Assembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="BepInEx"><HintPath>libs\BepInEx.dll</HintPath></Reference>
+    <Reference Include="JBooth.MicroSplat.Core"><HintPath>libs\JBooth.MicroSplat.Core.dll</HintPath></Reference>
+    <Reference Include="UnityEngine"><HintPath>libs\UnityEngine.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>libs\UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.AssetBundleModule"><HintPath>libs\UnityEngine.AssetBundleModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.TerrainModule"><HintPath>libs\UnityEngine.TerrainModule.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <!-- Auto-deploy: EVERY build copies the DLL straight into the game, so the game always runs
+       whatever was built last. Skipped silently when the game folder doesn't exist. -->
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="Exists('F:\SPT4.0\BepInEx\plugins\POMSix')">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="F:\SPT4.0\BepInEx\plugins\POMSix" />
+    <Message Importance="high" Text="==&gt; POMSix.dll deployed to F:\SPT4.0\BepInEx\plugins\POMSix" />
+  </Target>
+
+</Project>
