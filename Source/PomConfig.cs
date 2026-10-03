@@ -78,7 +78,7 @@ namespace POMSix
                 + "(fine detail stays in the normal map); 0 = raw per-texel height (crunchy/spiky). In "
                 + "Tessellation/Hybrid each level also adds half a mip of safety blur to the mesh heights.",
                 new AcceptableValueRange<int>(0, 4)));
-            // Defaults = the user's in-game tuning (2026-09-15, Hybrid mode).
+            // Defaults below are tuned in game.
             ShadowStrength = config.Bind("POM", "Self Shadow", 0.1f, new ConfigDescription(
                 "Stones cast soft shadows into crevices along the sun/moon direction (Prism horizon "
                 + "method on the height mips). 0 = off. Terrain only.",

@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 //                                    --nopatch: compile an already-patched file as-is) and compile every
 //                                    pass × keyword variant × stage with fxc. Exit code 1 on any error.
 //   repro <expectedPatchedShader>     patch the generated shader and diff against a known output.
-// Recipe per memory note unity-shader-offline-fxc-check: pass source with #pragma lines stripped,
+// Compile recipe: pass source with #pragma lines stripped,
 // /Gec REQUIRED (Unity's backwards-compat flag), SHADER_API_D3D11, target<5 → *_4_0 profiles.
 static class Program
 {
