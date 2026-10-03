@@ -29,10 +29,13 @@
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
 
-  <!-- The Assets/ folder will hold the POM shader source (built into an AssetBundle in the Unity
-       project), not C# to compile. -->
+  <!-- Assets/ holds the POM shader source + BuildPomBundle.cs (Unity editor script), and Tools/ holds
+       the standalone shaderdec console project (net8.0, its own csproj) — neither is POMSix runtime
+       code. The SDK-style **/*.cs glob would otherwise compile them (and Tools' generated obj/
+       AssemblyInfo → duplicate-attribute errors, + shaderdec's System.Text.Json usage), so exclude both. -->
   <ItemGroup>
     <Compile Remove="Assets\**\*.cs" />
+    <Compile Remove="Tools\**\*.cs" />
   </ItemGroup>
 
   <!-- References resolve from the local libs/ folder (DLLs copied from the game Managed + BepInEx)
@@ -46,14 +49,15 @@
     <Reference Include="UnityEngine"><HintPath>libs\UnityEngine.dll</HintPath></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>libs\UnityEngine.CoreModule.dll</HintPath></Reference>
     <Reference Include="UnityEngine.AssetBundleModule"><HintPath>libs\UnityEngine.AssetBundleModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.ImageConversionModule"><HintPath>libs\UnityEngine.ImageConversionModule.dll</HintPath></Reference>
     <Reference Include="UnityEngine.TerrainModule"><HintPath>libs\UnityEngine.TerrainModule.dll</HintPath></Reference>
   </ItemGroup>
 
   <!-- Auto-deploy: EVERY build copies the DLL straight into the game, so the game always runs
        whatever was built last. Skipped silently when the game folder doesn't exist. -->
-  <Target Name="DeployToGame" AfterTargets="Build" Condition="Exists('F:\SPT4.0\BepInEx\plugins\POMSix')">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="F:\SPT4.0\BepInEx\plugins\POMSix" />
-    <Message Importance="high" Text="==&gt; POMSix.dll deployed to F:\SPT4.0\BepInEx\plugins\POMSix" />
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="Exists('F:\SPT4.1\BepInEx\plugins\POMSix')">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="F:\SPT4.1\BepInEx\plugins\POMSix" />
+    <Message Importance="high" Text="==&gt; POMSix.dll deployed to F:\SPT4.1\BepInEx\plugins\POMSix" />
   </Target>
 
 </Project>

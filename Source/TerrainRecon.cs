@@ -56,6 +56,17 @@ namespace POMSix
                   .Append(" splatLayers=").Append(td.alphamapLayers)
                   .Append(" alphamapTextures=").Append(td.alphamapTextures?.Length ?? 0)
                   .Append(" drawInstanced=").Append(t.terrain.drawInstanced).AppendLine();
+                // Who actually renders the ground: past basemapDistance Unity draws the BAKED basemap
+                // (no per-pixel material work shows there); Tarkov's TerrainLod can swap the whole
+                // terrain for a baked LOD mesh; a materialTemplate mismatch means our swapped material
+                // isn't the one the terrain draws at all.
+                TerrainLod lod = t.GetComponent<TerrainLod>();
+                sb.Append("  renderPath: basemapDistance=").Append(t.terrain.basemapDistance)
+                  .Append(" drawHeightmap=").Append(t.terrain.drawHeightmap)
+                  .Append(" terrainEnabled=").Append(t.terrain.enabled)
+                  .Append(" materialTemplate==matInstance=").Append(t.terrain.materialTemplate == o.matInstance)
+                  .Append(" terrainLod=").Append(lod == null ? "none" : lod.TerrainIsVisible ? "terrainVisible" : "LOD-MESH-ACTIVE")
+                  .AppendLine();
             }
             else if (o is MicroSplatMeshTerrain mt)
             {
@@ -67,6 +78,7 @@ namespace POMSix
             if (m == null && o.templateMaterialHigh != null)
                 m = o.templateMaterialHigh.GetSeasonMaterial(MicroSplatObject.currentSeason);
             if (m == null) { sb.AppendLine("  material: <none resolved>"); Log(sb); return; }
+            ProbeDiffuseAlpha(m);
 
             Shader sh = m.shader;
             sb.Append("  material '").Append(m.name).Append("' shader '").Append(sh != null ? sh.name : "<null>")
@@ -75,36 +87,160 @@ namespace POMSix
 
             // The zero-cost shortcut check: if the shipped shader already declares the parallax/tess
             // module properties, POM is compiled in and may just need enabling.
-            sb.Append("  POM check: _POMParams=").Append(m.HasProperty("_POMParams"))
-              .Append(" _ParallaxParams=").Append(m.HasProperty("_ParallaxParams"))
-              .Append(" _TessData1=").Append(m.HasProperty("_TessData1"))
+            sb.Append("  POM check: _POMSixCanary=").Append(m.HasProperty("_POMSixCanary"))
+              .Append(" _POMParams=").Append(m.HasProperty("_POMParams"))
               .Append(" _TessData2=").Append(m.HasProperty("_TessData2")).AppendLine();
+            sb.Append("  POMSix globals: params=").Append(Shader.GetGlobalVector("_POMSixParams"))
+              .Append(" debug=").Append(Shader.GetGlobalFloat("_POMSixDebug")).AppendLine();
 
-            if (sh != null)
+            AppendShaderProperties(sb, m, sh);
+            Log(sb);
+        }
+
+        private static void AppendShaderProperties(StringBuilder sb, Material m, Shader sh)
+        {
+            if (sh == null) return;
+            int n = sh.GetPropertyCount();
+            sb.Append("  shader properties (").Append(n).AppendLine("):");
+            for (int i = 0; i < n; i++)
             {
-                int n = sh.GetPropertyCount();
-                sb.Append("  shader properties (").Append(n).AppendLine("):");
-                for (int i = 0; i < n; i++)
+                string pn = sh.GetPropertyName(i);
+                ShaderPropertyType pt = sh.GetPropertyType(i);
+                sb.Append("    ").Append(pn).Append(" [").Append(pt).Append("] ");
+                // GetPropertyName reads asset metadata; HasProperty is native-backed. A property in
+                // the table but not the native side = broken/stripped compiled shader data — say so
+                // instead of letting the strict getters below spam Unity errors.
+                if (!m.HasProperty(pn)) { sb.AppendLine("<in table but NOT in native material>"); continue; }
+                switch (pt)
                 {
-                    string pn = sh.GetPropertyName(i);
-                    ShaderPropertyType pt = sh.GetPropertyType(i);
-                    sb.Append("    ").Append(pn).Append(" [").Append(pt).Append("] ");
-                    switch (pt)
-                    {
-                        case ShaderPropertyType.Float:
-                        case ShaderPropertyType.Range:
-                            sb.Append("= ").Append(m.GetFloat(pn)); break;
-                        case ShaderPropertyType.Vector:
-                            sb.Append("= ").Append(m.GetVector(pn)); break;
-                        case ShaderPropertyType.Color:
-                            sb.Append("= ").Append(m.GetColor(pn)); break;
-                        case ShaderPropertyType.Texture:
-                            AppendTex(sb, m.GetTexture(pn)); break;
-                    }
-                    sb.AppendLine();
+                    case ShaderPropertyType.Float:
+                    case ShaderPropertyType.Range:
+                        sb.Append("= ").Append(m.GetFloat(pn)); break;
+                    case ShaderPropertyType.Vector:
+                        sb.Append("= ").Append(m.GetVector(pn)); break;
+                    case ShaderPropertyType.Color:
+                        sb.Append("= ").Append(m.GetColor(pn)); break;
+                    case ShaderPropertyType.Texture:
+                        AppendTex(sb, m.GetTexture(pn)); break;
+                }
+                sb.AppendLine();
+            }
+        }
+
+        // Road/path recon: roads are mesh strips draped over the terrain (RoadsTerrainAligner), with
+        // their own materials — find them by name and dump ONE representative material per unique
+        // shader, so a single raid tells us what a road-POM shader must reproduce.
+        private static readonly HashSet<string> _roadShadersSeen = new HashSet<string>();
+        private static readonly string[] _roadWords =
+            { "road", "asphalt", "path", "sidewalk", "pavement", "trail", "kerb", "curb" };
+
+        public static void DumpRoads(string sceneName)
+        {
+            var counts = new Dictionary<string, int>();
+            foreach (MeshRenderer r in Resources.FindObjectsOfTypeAll<MeshRenderer>())
+            {
+                if (r == null || !r.gameObject.scene.IsValid()) continue;
+                Material m = r.sharedMaterial;
+                if (m == null || m.shader == null) continue;
+                string names = (r.name + "|" + m.name).ToLowerInvariant();
+                bool hit = false;
+                foreach (string w in _roadWords)
+                    if (names.Contains(w)) { hit = true; break; }
+                if (!hit) continue;
+
+                string shaderName = m.shader.name;
+                counts.TryGetValue(shaderName, out int c);
+                counts[shaderName] = c + 1;
+
+                if (!_roadShadersSeen.Add(shaderName)) continue;
+                StringBuilder sb = new StringBuilder(2048);
+                sb.Append("[RoadRecon] '").Append(r.name).Append("' scene=").Append(sceneName)
+                  .Append(" material '").Append(m.name).Append("' shader '").Append(shaderName)
+                  .Append("' queue=").Append(m.renderQueue).Append(" passes=").Append(m.passCount).AppendLine();
+                sb.Append("  matKeywords: ").Append(string.Join(" ", m.shaderKeywords)).AppendLine();
+                AppendShaderProperties(sb, m, m.shader);
+                Log(sb);
+            }
+            if (counts.Count > 0 && _countsScenes.Add(sceneName))
+            {
+                StringBuilder sb = new StringBuilder(512);
+                sb.AppendLine("[RoadRecon] renderer counts by shader:");
+                foreach (var kv in counts)
+                    sb.Append("    ").Append(kv.Key).Append(" x").Append(kv.Value).AppendLine();
+                Log(sb);
+            }
+            DumpRoadTextures();
+        }
+
+        private static readonly HashSet<string> _countsScenes = new HashSet<string>();
+
+        // The road surface shader ('Custom/Vert Paint SoftCutout Decal', identified 2026-07-19) has a
+        // _Heights mask BSG authored for its ALPHA_HEIGHT layer blending. PNG-dump it (+ one layer's
+        // diffuse/normal) so we can see whether it's real per-layer height data POM can march
+        // directly — the best possible height source, no generation needed.
+        private const string RoadShaderName = "Custom/Vert Paint SoftCutout Decal";
+        private static readonly HashSet<int> _roadTexDumped = new HashSet<int>();
+
+        private static readonly HashSet<int> _roadMatsLogged = new HashSet<int>();
+
+        private static void DumpRoadTextures()
+        {
+            StringBuilder sb = null;
+            foreach (MeshRenderer r in Resources.FindObjectsOfTypeAll<MeshRenderer>())
+            {
+                if (r == null || !r.gameObject.scene.IsValid()) continue;
+                Material m = r.sharedMaterial;
+                if (m == null || m.shader == null) continue;
+                bool vanilla = m.shader.name == RoadShaderName;
+                bool swapped = PomApplier.RoadShader != null && m.shader == PomApplier.RoadShader;
+                if (!vanilla && !swapped) continue;
+                SaveTexPng(m, "_Heights");
+                SaveTexPng(m, "_MainTex0");
+                SaveTexPng(m, "_BumpMap0");
+                // Which texture sits in which layer, per material — needed to decode the vertex-paint
+                // convention (v1 rendered the wrong layer on road bodies).
+                if (_roadMatsLogged.Add(m.GetInstanceID()))
+                {
+                    sb ??= new StringBuilder(1024).AppendLine("[RoadRecon] material layers:");
+                    sb.Append("    '").Append(m.name).Append("': L0=").Append(TexName(m, "_MainTex0"))
+                      .Append(" L1=").Append(TexName(m, "_MainTex1"))
+                      .Append(" L2=").Append(TexName(m, "_MainTex2"))
+                      .Append(" heights=").Append(TexName(m, "_Heights")).AppendLine();
                 }
             }
-            Log(sb);
+            if (sb != null) Log(sb);
+        }
+
+        private static string TexName(Material m, string prop)
+        {
+            if (!m.HasProperty(prop)) return "<n/a>";
+            Texture t = m.GetTexture(prop);
+            return t == null ? "<null>" : t.name;
+        }
+
+        private static void SaveTexPng(Material m, string prop)
+        {
+            if (!m.HasProperty(prop)) return;
+            Texture tex = m.GetTexture(prop);
+            if (tex == null || !_roadTexDumped.Add(tex.GetInstanceID())) return;
+            string name = tex.name;
+            int w = Mathf.Min(tex.width, 1024), h = Mathf.Min(tex.height, 1024);
+            RenderTexture rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.Linear);
+            Graphics.Blit(tex, rt);
+            AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, req =>
+            {
+                RenderTexture.ReleaseTemporary(rt);
+                if (req.hasError) { Plugin.MyLog.LogError("[RoadRecon] readback failed: " + name); return; }
+                var t2 = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                t2.SetPixelData(req.GetData<byte>().ToArray(), 0);
+                t2.Apply(false, false);
+                string dir = System.IO.Path.Combine(BepInEx.Paths.PluginPath, "POMSix", "HeightCache", "debug", "roads");
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, prop + "_" + name + ".png"), t2.EncodeToPNG());
+                Object.Destroy(t2);
+                Plugin.MyLog.LogInfo("[RoadRecon] dumped " + prop + " '" + name + "' to HeightCache/debug/roads");
+            });
         }
 
         private static void AppendTex(StringBuilder sb, Texture tex)
@@ -117,5 +253,58 @@ namespace POMSix
         }
 
         private static void Log(StringBuilder sb) => Plugin.MyLog.LogInfo(sb.ToString());
+
+        // POM marches the _Diffuse array's ALPHA as the heightfield. If BSG built their arrays without
+        // height maps, that channel is near-constant and POM physically cannot show relief no matter
+        // the params — this readback decodes a small mip of every layer and logs alpha statistics so
+        // one raid settles it. stddev ~0 = flat (no height data); a real height map is ~40-70 stddev.
+        private static readonly HashSet<int> _probedTex = new HashSet<int>();
+
+        private static void ProbeDiffuseAlpha(Material m)
+        {
+            if (!m.HasProperty("_Diffuse")) return;
+            if (!(m.GetTexture("_Diffuse") is Texture2DArray arr) || !_probedTex.Add(arr.GetInstanceID()))
+                return;
+            // BC3 can't be async-read directly (hit in-game 2026-07-19) — decode on the GPU instead:
+            // blit each layer (depth-slice Blit overload) into a small uncompressed RT, read that back.
+            const int size = 64;
+            int depth = arr.depth;
+            string texName = arr.name;
+            string[] results = new string[depth];
+            int pending = depth;
+            for (int layer = 0; layer < depth; layer++)
+            {
+                int l = layer;
+                RenderTexture rt = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.ARGB32);
+                Graphics.Blit(arr, rt, l, 0);
+                AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, req =>
+                {
+                    RenderTexture.ReleaseTemporary(rt);
+                    if (req.hasError) results[l] = "layer " + l + ": <readback error>";
+                    else
+                    {
+                        var data = req.GetData<byte>();
+                        int n = size * size;
+                        int min = 255, max = 0; double sum = 0, sumSq = 0;
+                        for (int i = 0; i < n; i++)
+                        {
+                            byte a = data[i * 4 + 3];
+                            if (a < min) min = a; if (a > max) max = a;
+                            sum += a; sumSq += (double)a * a;
+                        }
+                        double mean = sum / n, std = System.Math.Sqrt(System.Math.Max(0, sumSq / n - mean * mean));
+                        results[l] = "layer " + l + ": min=" + min + " max=" + max
+                            + " mean=" + mean.ToString("0.0") + " std=" + std.ToString("0.0");
+                    }
+                    if (--pending == 0)
+                    {
+                        StringBuilder sb = new StringBuilder(1024);
+                        sb.Append("[Recon] _Diffuse '").Append(texName).AppendLine("' alpha (=POM height) per layer:");
+                        foreach (string r in results) sb.Append("    ").AppendLine(r);
+                        Plugin.MyLog.LogInfo(sb.ToString());
+                    }
+                });
+            }
+        }
     }
 }

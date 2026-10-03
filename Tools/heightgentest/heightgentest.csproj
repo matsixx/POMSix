@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="POMSix"><HintPath>F:\SPT-POM\bin\Debug\netstandard2.1\POMSix.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>F:\SPT-POM\libs\UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="BepInEx"><HintPath>F:\SPT-POM\libs\BepInEx.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>
