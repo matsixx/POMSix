@@ -44,9 +44,9 @@ static class Program
             }
 
         MethodInfo integrate = typeof(POMSix.HeightGen).GetMethod("IntegrateAndNormalize", BindingFlags.NonPublic | BindingFlags.Static);
-        object[] args = { rgba, n, 0f };
+        object[] args = { rgba, n, false, 0f };
         var outH = (ushort[])integrate.Invoke(null, args);
-        float range = (float)args[2];
+        float range = (float)args[3];
 
         var rec = new double[outH.Length];
         ushort mn = ushort.MaxValue, mx = 0;
@@ -60,11 +60,11 @@ static class Program
 
         // Mip chains: sizes and max >= avg everywhere.
         MethodInfo chain = typeof(POMSix.HeightGen).GetMethod("BuildChain", BindingFlags.NonPublic | BindingFlags.Static);
-        // BuildChain uses the Res const (1024) — feed a 1024² field built by tiling the 512² output.
+        // BuildChain at the terrain's 1024 — feed a 1024² field built by tiling the 512² output.
         var big = new ushort[1024 * 1024];
         for (int y = 0; y < 1024; y++) for (int x = 0; x < 1024; x++) big[y * 1024 + x] = outH[(y % n) * n + (x % n)];
-        var avg = (ushort[][])chain.Invoke(null, new object[] { big, false });
-        var max = (ushort[][])chain.Invoke(null, new object[] { big, true });
+        var avg = (ushort[][])chain.Invoke(null, new object[] { big, false, 1024 });
+        var max = (ushort[][])chain.Invoke(null, new object[] { big, true, 1024 });
         bool maxOk = true;
         for (int m = 0; m < avg.Length && maxOk; m++)
             for (int i = 0; i < avg[m].Length; i++) if (max[m][i] < avg[m][i]) { maxOk = false; break; }
@@ -82,10 +82,36 @@ static class Program
         Console.WriteLine("bump transfer : " + bBumps.ToString("0.000") + "   (stone content kept; <1 = broad bump bases partially filtered)");
         Console.WriteLine("baseline corr(bumps, bowl) in the synthetic field: " + Corr(bumps, bowl).ToString("0.000"));
 
-        bool pass = corrBumps > 0.85 && Math.Abs(aBowl - expected) < 0.01 && bBumps > 0.6
+        // Road packing (normal.x = A * R): the same field stored DXT5nm-style (R = 1, A = nx) and
+        // two-channel-style (R = nx, A = 1) must integrate to exactly the terrain result.
+        var roadA = new byte[rgba.Length]; var roadR = new byte[rgba.Length];
+        for (int i = 0; i < n * n; i++)
+        {
+            roadA[i * 4] = 255; roadA[i * 4 + 1] = rgba[i * 4 + 1]; roadA[i * 4 + 3] = rgba[i * 4 + 3];
+            roadR[i * 4] = rgba[i * 4 + 3]; roadR[i * 4 + 1] = rgba[i * 4 + 1]; roadR[i * 4 + 3] = 255;
+        }
+        object[] aA = { roadA, n, true, 0f }, aR = { roadR, n, true, 0f };
+        var hA = (ushort[])integrate.Invoke(null, aA);
+        var hR = (ushort[])integrate.Invoke(null, aR);
+        int worst = 0;
+        for (int i = 0; i < outH.Length; i++) worst = Math.Max(worst, Math.Max(Math.Abs(hA[i] - outH[i]), Math.Abs(hR[i] - outH[i])));
+        bool roadOk = worst == 0 && (float)aA[3] == range && (float)aR[3] == range;
+        Console.WriteLine("road packing  : max difference vs terrain packing " + worst + " of 65535, same range: " + roadOk);
+        // Real scale: depth below the top = (1 - normalised) * range texels. Against the true bump field
+        // (the bowl is filtered out) the slope should be ~the bump transfer above, i.e. no hidden gain.
+        Console.WriteLine("relief        : " + range.ToString("0.00") + " texels = " + (range / n * 100).ToString("0.00") + "% of the tile (true bump field spans "
+            + (Percentile(bumps, 0.98) - Percentile(bumps, 0.02)).ToString("0.00") + " texels)");
+
+        bool pass = roadOk && corrBumps > 0.85 && Math.Abs(aBowl - expected) < 0.01 && bBumps > 0.6
                     && mx > 60000 && mn < 5000 && avg.Length == 11 && maxOk;
         Console.WriteLine(pass ? "HEIGHTGEN TEST PASSED" : "HEIGHTGEN TEST FAILED");
         return pass ? 0 : 1;
+    }
+
+    static double Percentile(double[] v, double p)
+    {
+        var c = (double[])v.Clone(); Array.Sort(c);
+        return c[(int)(p * (c.Length - 1))];
     }
 
     // Least-squares y ≈ a·x1 + b·x2 + c (all mean-removed).

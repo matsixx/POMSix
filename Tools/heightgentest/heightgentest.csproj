@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="POMSix"><HintPath>F:\SPT-POM\bin\Debug\netstandard2.1\POMSix.dll</HintPath></Reference>
+    <Reference Include="POMSix"><HintPath>F:\SPT-POM\bin\Release\netstandard2.1\POMSix.dll</HintPath></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>F:\SPT-POM\libs\UnityEngine.CoreModule.dll</HintPath></Reference>
     <Reference Include="BepInEx"><HintPath>F:\SPT-POM\libs\BepInEx.dll</HintPath></Reference>
   </ItemGroup>

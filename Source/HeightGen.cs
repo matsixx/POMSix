@@ -27,7 +27,7 @@ namespace POMSix
     {
         public const int Res = 1024;
         private const byte CacheVersion = 2;
-        private const float HighPassCycles = 3f; // relief below ~3 cycles per texture tile is suppressed
+        internal const float HighPassCycles = 3f; // relief below ~3 cycles per texture tile is suppressed
         private const int MaxAmpLayers = 32;     // matches the shader's _POMSixLayerAmp[32]
 
         public static bool PyramidReady;
@@ -54,7 +54,7 @@ namespace POMSix
         private static int _uploadIdx;
         // At most a quarter of the cores integrate at once: this runs during raid load, next to the
         // game's own loading threads, and each 1024² layer holds ~20MB of FFT buffers while working.
-        private static readonly SemaphoreSlim _workers =
+        internal static readonly SemaphoreSlim Workers =
             new SemaphoreSlim(Mathf.Max(1, System.Environment.ProcessorCount / 4));
         private static readonly object _pendingLock = new object();
         private static readonly float[] _amps = NewOnes();
@@ -122,11 +122,11 @@ namespace POMSix
                 byte[] rgba = req.GetData<byte>().ToArray(); // copy off the native buffer for the worker
                 Task.Run(() =>
                 {
-                    _workers.Wait();
+                    Workers.Wait();
                     ushort[] norm;
                     float range;
-                    try { norm = IntegrateAndNormalize(rgba, Res, out range); }
-                    finally { _workers.Release(); }
+                    try { norm = IntegrateAndNormalize(rgba, Res, false, out range); }
+                    finally { Workers.Release(); }
                     ushort[][] doneL0 = null;
                     float[] doneRanges = null;
                     lock (_pendingLock)
@@ -154,8 +154,8 @@ namespace POMSix
             p.max = new ushort[p.depth][][];
             for (int l = 0; l < p.depth; l++)
             {
-                p.avg[l] = BuildChain(l0[l], false);
-                p.max[l] = BuildChain(l0[l], true);
+                p.avg[l] = BuildChain(l0[l], false, Res);
+                p.max[l] = BuildChain(l0[l], true, Res);
             }
             if (key == _currentKey) _prepared = p;
         }
@@ -193,11 +193,11 @@ namespace POMSix
 
         // Mip chain [0..top]: box average (bilinear heights for march/shadow/AO/blend) or max
         // (conservative pyramid for QDM).
-        private static ushort[][] BuildChain(ushort[] l0, bool takeMax)
+        internal static ushort[][] BuildChain(ushort[] l0, bool takeMax, int res)
         {
             var chain = new List<ushort[]> { l0 };
             ushort[] cur = l0;
-            int size = Res;
+            int size = res;
             while (size > 1)
             {
                 int ns = size >> 1;
@@ -293,16 +293,18 @@ namespace POMSix
 
         //--- normal → height: FFT Poisson integration ----------------------------------------------
 
-        private static ushort[] IntegrateAndNormalize(byte[] rgba, int n, out float range)
+        // range = the 2nd..98th percentile span of the integrated height, in texels (/ n = fraction of a tile).
+        internal static ushort[] IntegrateAndNormalize(byte[] rgba, int n, bool roadPacking, out float range)
         {
             // _NormalSAO packing (from the generated shader): normal.x = A, normal.y = G (DXT5nm).
+            // Road _BumpMapN (from the vanilla road shader): normal.x = A * R, normal.y = G.
             var re = new float[n * n];   // gx, becomes Re(H)
             var im = new float[n * n];   // Im(Gx), becomes Im(H)
             var gy = new float[n * n];
             var gyIm = new float[n * n];
             for (int i = 0; i < n * n; i++)
             {
-                float nx = rgba[i * 4 + 3] / 255f * 2f - 1f;
+                float nx = rgba[i * 4 + 3] / 255f * (roadPacking ? rgba[i * 4] / 255f : 1f) * 2f - 1f;
                 float ny = rgba[i * 4 + 1] / 255f * 2f - 1f;
                 float nz = Mathf.Sqrt(Mathf.Max(0.02f, 1f - nx * nx - ny * ny));
                 re[i] = -nx / nz; // n ∝ (-dh/dx, -dh/dy, 1)

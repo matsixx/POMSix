@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace POMSix
 {
-    [BepInPlugin("com.matsix.pomsix", "POMSix", "0.1.0")]
+    [BepInPlugin("com.matsix.pomsix", "POMSix", "1.0.1")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource MyLog;
@@ -57,6 +57,7 @@ namespace POMSix
         private void Update()
         {
             HeightGen.Pump();
+            RoadHeights.Pump();
             SunTracker.UpdateGlobal();
             Camera cam = Camera.main;
             Shader.SetGlobalVector("_POMSixMainCamPos", cam != null

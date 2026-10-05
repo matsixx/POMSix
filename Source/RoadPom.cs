@@ -6,7 +6,8 @@ namespace POMSix
 {
     // Swaps every road/path/sidewalk material ('Custom/Vert Paint SoftCutout Decal' — the surface
     // shader recon identified 2026-07-19) to our POMSix/Road transcription. Same property names, so
-    // textures/params rebind on the swap; POM marches BSG's own authored _Heights mask.
+    // textures/params rebind on the swap; POM marches heights generated from the road normal maps
+    // (RoadHeights).
     // The renderer walk is CHUNKED over frames — Tarkov scenes have enormous renderer counts and
     // the original single-frame scan was a visible raid-start lag spike.
     public static class RoadPom
@@ -28,6 +29,9 @@ namespace POMSix
         private static readonly List<MeshRenderer> _stamped = new List<MeshRenderer>();
         private static readonly HashSet<MeshRenderer> _roads = new HashSet<MeshRenderer>();   // every swapped road renderer
         private static bool _running;
+
+        // Every road material carrying our shader (RoadHeights assigns their relief slices).
+        public static ICollection<Material> Materials => _orig.Keys;
 
         private static Material Stamp(Material road)
         {
@@ -97,6 +101,7 @@ namespace POMSix
             if (swapped > 0)
                 Plugin.MyLog.LogInfo("[POMSix] Road shader swapped onto " + swapped + " materials ("
                     + (stamp ? _stamped.Count + " renderers depth-stamped)." : "no depth stamps: the road mask flattens the ground)."));
+            RoadHeights.Request(_orig.Keys); // relief from the road normal maps (cached per texture)
             _running = false;
         }
 

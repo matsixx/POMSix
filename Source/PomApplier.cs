@@ -17,6 +17,10 @@ namespace POMSix
         private static Shader _hybridShader; // POMSix/TerrainHybrid — tessellation + POM residual, optional
         public static Shader RoadShader; // POMSix/Road, loaded from the same bundle (used by RoadPom)
         public static Shader RoadMaskShader; // Hidden/POMSix/RoadMask (RoadMask.cs top-down coverage)
+        // The road shader takes relief from generated heights (RoadHeights). A pom bundle built before
+        // that marches BSG's mask at this fixed uv-space depth instead (the old Road Height).
+        public static bool RoadHeightsSupported;
+        private const float LegacyRoadHeight = 0.01f;
         private static bool _triedLoad;
         private static bool _pomBroken, _tessBroken, _hybridBroken, _warnedMissing;
         // BSG's height-blend contrast, read off the ORIGINAL terrain material (reads work; only writes
@@ -147,9 +151,12 @@ namespace POMSix
             float carve = PomConfig.Mode.Value != DisplacementMode.POM ? PomConfig.TessDisplacement.Value
                         : (PomConfig.DepthOffset.Value ? PomConfig.Height.Value : 0f);
             Shader.SetGlobalFloat("_POMSixRoadSink", carve + 0.02f);
-            // Roads: own height scale (shared fades/steps).
-            Shader.SetGlobalVector("_POMSixRoadParams", new Vector4(PomConfig.RoadHeight.Value,
+            // Roads share the terrain's fades/steps. x is only read by bundles built before generated road
+            // heights (a uv-space depth for the old mask march); the current shader takes _POMSixRoadRelief.
+            Shader.SetGlobalVector("_POMSixRoadParams", new Vector4(LegacyRoadHeight,
                 PomConfig.FadeStart.Value, PomConfig.FadeDistance.Value, PomConfig.Steps.Value));
+            Shader.SetGlobalVector("_POMSixRoadRelief", new Vector4(PomConfig.RoadRelief.Value,
+                PomConfig.RoadMaxDepth.Value, PomConfig.RoadGroundAlign.Value, 0f));
             // Terrain self-shadow + horizon AO strengths (0 = the shader skips the loops).
             Shader.SetGlobalVector("_POMSixShadowParams", new Vector4(PomConfig.ShadowStrength.Value,
                 PomConfig.AoStrength.Value, 0f, 0f));
@@ -233,6 +240,10 @@ namespace POMSix
                 + Describe(_tessShader) + ", Hybrid=" + Describe(_hybridShader) + ", Road=" + Describe(RoadShader)
                 + ", RoadMask=" + Describe(RoadMaskShader));
             if (_pomShader == null) Plugin.MyLog.LogError("[POMSix] No POM terrain shader in the pom bundle.");
+            RoadHeightsSupported = RoadShader != null && RoadShader.FindPropertyIndex("_POMSixRoadLayers") >= 0;
+            if (RoadShader != null && !RoadHeightsSupported)
+                Plugin.MyLog.LogWarning("[POMSix] The pom bundle's road shader predates generated road heights: "
+                    + "roads keep the old mask relief (Road Relief has no effect) until the bundle is rebuilt.");
             bundle.Unload(false); // keep the shader in memory
         }
 

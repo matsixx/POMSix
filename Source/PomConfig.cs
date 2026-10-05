@@ -26,7 +26,9 @@ namespace POMSix
         public static ConfigEntry<bool> DerivedNormals;
         public static ConfigEntry<int> Smoothing;
         public static ConfigEntry<bool> Roads;
-        public static ConfigEntry<float> RoadHeight;
+        public static ConfigEntry<float> RoadRelief;
+        public static ConfigEntry<float> RoadMaxDepth;
+        public static ConfigEntry<float> RoadGroundAlign;
         public static ConfigEntry<bool> RoadMask;
         public static ConfigEntry<float> ShadowStrength;
         public static ConfigEntry<float> AoStrength;
@@ -109,16 +111,19 @@ namespace POMSix
                 + "reflections/AO/fog/upscaler reprojection all see the displaced ground (less POM "
                 + "smearing in motion). Terrain only.");
             Roads = config.Bind("POM", "Roads", true,
-                "Swap road/path/sidewalk materials to the POMSix road shader (POM marches BSG's own "
-                + "authored height masks).");
+                "Swap road/path/sidewalk materials to the POMSix road shader (POM from heights generated "
+                + "out of each road texture's own normal map, like the terrain).");
             RoadMask = config.Bind("Roads", "Flatten Under Roads", true,
-                "Fade the terrain carve (tessellation / POM depth) to nothing under and beside roads, from a "
-                + "top-down mask of the road meshes built at raid load. Roads sit on level ground; carving rock "
-                + "pits there left a depth cliff along every crumbled edge that ambient occlusion shaded as a wall.");
-            RoadHeight = config.Bind("Roads", "Road Height", 0.008f, new ConfigDescription(
-                "POM displacement for roads — separate from terrain (road UV density differs and the "
-                + "height masks span their full range).",
-                new AcceptableValueRange<float>(0f, 0.15f)));
+                "Flatten the tessellated terrain (Tessellation and Hybrid) under and beside roads, from a "
+                + "top-down mask of the road meshes built at raid load. Roads sit on level ground; a displaced "
+                + "mesh there left a cliff along every crumbled edge that ambient occlusion shaded as a wall. "
+                + "POM's visible relief is not changed; only the depth it writes is levelled under roads, so "
+                + "ambient occlusion and fog don't see pits through the road surface.");
+            RoadRelief = config.Bind("Roads", "Road Relief", 1f, new ConfigDescription(
+                "Strength of the road relief. 1 = the depth each road texture's own normal map describes, so "
+                + "every road and every layer of it gets relief in proportion to its features; higher "
+                + "exaggerates, 0 = flat.",
+                new AcceptableValueRange<float>(0f, 4f)));
 
             BlendedMarch = config.Bind("Advanced", "Blended March", true, new ConfigDescription(
                 "March ONE surface made of both top ground layers blended by height. Off = the stock "
@@ -135,13 +140,23 @@ namespace POMSix
                 "EXPERIMENTAL: shade the terrain with normals computed from the marched height field "
                 + "instead of the normal maps — self-consistent with the displacement but loses "
                 + "fine detail. Most setups look better with this OFF.", null, advanced));
+            RoadMaxDepth = config.Bind("Advanced", "Road Max Depth", 0.08f, new ConfigDescription(
+                "Deepest any road relief may go, in meters. A safety limit for road textures stretched over "
+                + "a large area, whose normal maps would otherwise describe very deep relief.",
+                new AcceptableValueRange<float>(0.01f, 0.3f), advanced));
+            RoadGroundAlign = config.Bind("Advanced", "Road Ground Alignment", 1f, new ConfigDescription(
+                "How a road's layers line up in height. 1 = at their ground level, so loose stones stand on "
+                + "top of the asphalt (the asphalt sits a little below the road plane to make room); 0 = at "
+                + "their highest points, which leaves stones flush with the asphalt, in pits.",
+                new AcceptableValueRange<float>(0f, 1f), advanced));
             ReconDump = config.Bind("Advanced", "Recon Dump", false, new ConfigDescription(
                 "Log every MicroSplat terrain's shader interface at raid load + dump debug textures.",
                 null, advanced));
             DebugView = config.Bind("Advanced", "Debug View", 0, new ConfigDescription(
                 "Paints POM internals on the ground. Terrain: 1=ray inputs (R=march strength, G=tangent "
                 + "frame health, B=distance fade), 2=surface height the ray hit (white=top), 3=depth "
-                + "offset (red=deeper). Roads: 1=vertex colors, 2=blend weights, 3=blended height.",
+                + "offset (red=deeper). Roads: 1=vertex colors, 2=blend weights, 3=relief depth (white = "
+                + "Road Max Depth, red tint = limited by it).",
                 new AcceptableValueRange<int>(0, 3), advanced));
 
             // Params/debug ride global shader constants (instant, no scan). Only the Enabled toggle

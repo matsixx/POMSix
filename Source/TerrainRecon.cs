@@ -205,10 +205,55 @@ namespace POMSix
                     sb.Append("    '").Append(m.name).Append("': L0=").Append(TexName(m, "_MainTex0"))
                       .Append(" L1=").Append(TexName(m, "_MainTex1"))
                       .Append(" L2=").Append(TexName(m, "_MainTex2"))
-                      .Append(" heights=").Append(TexName(m, "_Heights")).AppendLine();
+                      .Append(" heights=").Append(TexName(m, "_Heights"))
+                      // Tilings: road POM depth is in layer 0's uv units, so these set each layer's relief.
+                      .Append(" tiling L0=").Append(Tiling(m, "_MainTex0")).Append(" L1=").Append(Tiling(m, "_MainTex1"))
+                      .Append(" L2=").Append(Tiling(m, "_MainTex2")).Append(" heightsA=").Append(Tiling(m, "_Heights"))
+                      .Append(" blend=").Append(m.HasProperty("_BlendStrength") ? m.GetFloat("_BlendStrength").ToString("F2") : "?")
+                      .AppendLine();
                 }
             }
             if (sb != null) Log(sb);
+        }
+
+        private static string Tiling(Material m, string prop)
+        {
+            if (!m.HasProperty(prop)) return "?";
+            Vector2 s = m.GetTextureScale(prop);
+            return "(" + s.x.ToString("0.##") + "," + s.y.ToString("0.##") + ")";
+        }
+
+        // Per-channel range of a road height mask (R/G/B = the three layers' heights): the 5th..95th
+        // percentile span is the relief each layer actually gets, and "coarse" is how much of its
+        // variation sits in features wider than 16 px (broad mottle that POM turns into mounds).
+        private static string HeightStats(byte[] px, int w, int h)
+        {
+            StringBuilder sb = new StringBuilder(160);
+            int bw = w / 16, bh = h / 16;
+            for (int c = 0; c < 3; c++)
+            {
+                int[] hist = new int[256];
+                double sum = 0, sum2 = 0;
+                double[] block = new double[Mathf.Max(bw * bh, 1)];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int v = px[(y * w + x) * 4 + c];
+                        hist[v]++; sum += v; sum2 += (double)v * v;
+                        if (x / 16 < bw && y / 16 < bh) block[(y / 16) * bw + x / 16] += v / 256.0;
+                    }
+                int n = w * h, lo = 0, hi = 255, acc = 0;
+                for (int i = 0; i < 256; i++) { acc += hist[i]; if (acc >= n * 0.05) { lo = i; break; } }
+                acc = 0;
+                for (int i = 255; i >= 0; i--) { acc += hist[i]; if (acc >= n * 0.05) { hi = i; break; } }
+                double mean = sum / n, var = sum2 / n - mean * mean, bsum = 0, bsum2 = 0;
+                foreach (double b in block) { bsum += b; bsum2 += b * b; }
+                double bmean = bsum / block.Length, bvar = bsum2 / block.Length - bmean * bmean;
+                sb.Append(" ").Append("RGB"[c]).Append("=").Append((lo / 255f).ToString("F2")).Append("..")
+                  .Append((hi / 255f).ToString("F2")).Append(" coarse ")
+                  .Append(var > 1e-6 ? (100.0 * bvar / var).ToString("F0") : "0").Append("%");
+            }
+            return sb.ToString();
         }
 
         private static string TexName(Material m, string prop)
@@ -232,8 +277,11 @@ namespace POMSix
             {
                 RenderTexture.ReleaseTemporary(rt);
                 if (req.hasError) { Plugin.MyLog.LogError("[RoadRecon] readback failed: " + name); return; }
+                byte[] px = req.GetData<byte>().ToArray();
+                if (prop == "_Heights")
+                    Plugin.MyLog.LogInfo("[RoadRecon] height mask '" + name + "' range per layer:" + HeightStats(px, w, h));
                 var t2 = new Texture2D(w, h, TextureFormat.RGBA32, false);
-                t2.SetPixelData(req.GetData<byte>().ToArray(), 0);
+                t2.SetPixelData(px, 0);
                 t2.Apply(false, false);
                 string dir = System.IO.Path.Combine(BepInEx.Paths.PluginPath, "POMSix", "HeightCache", "debug", "roads");
                 System.IO.Directory.CreateDirectory(dir);

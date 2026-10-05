@@ -17,7 +17,7 @@ of the game's own MicroSplat shader with parallax added. The look of the ground 
 - **Height AO:** pits and crevices darken ambient light.
 - **Height blending:** stones poke through dirt and sand fills the gaps, instead of the game's flat cross-fade between ground materials.
 - **Depth offset:** objects sink into the relief instead of clipping at a flat line, and sun shadows fall across it.
-- **Road relief:** roads, paths and sidewalks get parallax from their own height masks. The terrain carve is flattened under roads so their edges stay clean.
+- **Road relief:** roads, paths and sidewalks get parallax from heights generated out of their own normal maps, the same way the terrain does. The terrain carve is flattened under roads so their edges stay clean.
 - **Three displacement modes:** POM (default), Tessellation and Hybrid.
 - **Correct in VR:** each eye gets its own parallax.
 
@@ -58,8 +58,8 @@ Every setting applies live, mid-raid.
 | Height Blending | 1 | Blends ground materials by height. 0 is the vanilla blend. |
 | Depth Offset | On | Lets objects, shadows, fog, AO and reflections see the displaced ground. |
 | Roads | On | Parallax on roads, paths and sidewalks. |
-| Flatten Under Roads | On | Keeps the terrain flat under and beside roads. |
-| Road Height | 0.008 | Relief depth on roads. |
+| Flatten Under Roads | On | Flattens the tessellated terrain under and beside roads (Tessellation and Hybrid). POM's visible relief is unchanged. |
+| Road Relief | 1 | Strength of the road relief. 1 is the depth the road textures' own normal maps describe; higher exaggerates. |
 
 The Advanced section has performance and debug options, such as a cheaper quadtree march and debug views.
 
