@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace POMSix
 {
-    [BepInPlugin("com.matsix.pomsix", "POMSix", "1.0.1")]
+    [BepInPlugin("com.matsix.pomsix", "POMSix", "1.0.2")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource MyLog;

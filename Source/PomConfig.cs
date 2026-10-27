@@ -42,6 +42,20 @@ namespace POMSix
 
         public static void Bind(ConfigFile config)
         {
+            // Wipe the config on a version change (mirrors CloudSix) so renamed/retuned keys don't linger.
+            string currentVersion = BepInEx.MetadataHelper.GetMetadata(typeof(Plugin)).Version.ToString();
+            var version = config.Bind("Internal", "ConfigVersion", "", "Do not modify");
+            if (version == null || version.Value != currentVersion)
+            {
+                config.Clear();
+                System.IO.File.WriteAllText(config.ConfigFilePath, "");
+                config.Reload();
+                version = config.Bind("Internal", "ConfigVersion", currentVersion, "Do not modify");
+                version.Value = currentVersion;
+                config.Save();
+                Plugin.MyLog.LogInfo($"Config reset for version {currentVersion}");
+            }
+
             var advanced = new ConfigurationManagerAttributes { IsAdvanced = true };
 
             Enabled = config.Bind("POM", "Enabled", true, "Parallax occlusion mapping on terrain.");
@@ -51,7 +65,7 @@ namespace POMSix
                 + "only hold shapes a few triangles wide, so fine detail is softer). Hybrid = both as ONE "
                 + "surface: tessellation builds the big shapes and silhouettes, POM carves the fine detail the "
                 + "mesh can't hold (heaviest, best). All use the same generated heights; roads keep their POM.");
-            TessDisplacement = config.Bind("Tessellation", "Displacement", 0.15f, new ConfigDescription(
+            TessDisplacement = config.Bind("Tessellation", "Displacement", 0.08f, new ConfigDescription(
                 "How deep the relief goes in Tessellation and Hybrid, in meters (in Hybrid this is the total: "
                 + "geometry + POM carve; POM Height is unused there). Carved INTO the ground (stone tops stay "
                 + "on the walkable surface), so feet and roads never sink into raised terrain.",
@@ -61,7 +75,7 @@ namespace POMSix
                 + "denser mesh and finer geometric detail, more GPU. The height detail each vertex samples is "
                 + "matched to this density, so the surface stays stable (no swimming) at any setting.",
                 new AcceptableValueRange<float>(4f, 40f)));
-            Height = config.Bind("POM", "Height", 0.045f, new ConfigDescription(
+            Height = config.Bind("POM", "Height", 0.035f, new ConfigDescription(
                 "Displacement strength. The illusion of relief POM digs into the ground.",
                 new AcceptableValueRange<float>(0f, 0.4f)));
             FadeStart = config.Bind("POM", "Fade Start", 15f, new ConfigDescription(
@@ -70,7 +84,7 @@ namespace POMSix
             FadeDistance = config.Bind("POM", "Fade Distance", 20f, new ConfigDescription(
                 "Fade-out range past Fade Start (fully off at start + distance).",
                 new AcceptableValueRange<float>(1f, 200f)));
-            Steps = config.Bind("POM", "Steps", 32, new ConfigDescription(
+            Steps = config.Bind("POM", "Steps", 2, new ConfigDescription(
                 "Max ray-march steps. The full count is spent at GRAZING angles (ground-level views, "
                 + "where rays cross the most texels); looking straight down uses about a third. "
                 + "Higher = cleaner steep relief, more cost.",

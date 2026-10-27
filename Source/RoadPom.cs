@@ -63,6 +63,7 @@ namespace POMSix
             bool stamp = !(PomConfig.RoadMask.Value && PomApplier.RoadMaskShader != null);
 
             MeshRenderer[] all = Resources.FindObjectsOfTypeAll<MeshRenderer>();
+            var live = new HashSet<Material>();   // the road materials on a renderer that is loaded now
             int swapped = 0;
             for (int i = 0; i < all.Length; i++)
             {
@@ -75,6 +76,7 @@ namespace POMSix
                 if (m == null || m.shader == null) continue;
                 bool isVanilla = m.shader.name == VanillaShaderName;
                 if (!isVanilla && m.shader != road) continue;
+                live.Add(m);
                 _roads.Add(r);
                 if (isVanilla)
                 {
@@ -101,8 +103,43 @@ namespace POMSix
             if (swapped > 0)
                 Plugin.MyLog.LogInfo("[POMSix] Road shader swapped onto " + swapped + " materials ("
                     + (stamp ? _stamped.Count + " renderers depth-stamped)." : "no depth stamps: the road mask flattens the ground)."));
+            Forget(live);
             RoadHeights.Request(_orig.Keys); // relief from the road normal maps (cached per texture)
             _running = false;
+        }
+
+        // Let go of what belongs to maps that are gone. These lists hold the road materials themselves, and the
+        // game frees a map with Resources.UnloadUnusedAssets, which leaves alone whatever a static field still
+        // reaches: every map played kept its road materials and their textures loaded, and the relief array
+        // (RoadHeights) was built for all of their roads again at every raid. A road material that no loaded
+        // renderer uses gets the game's shader back and is dropped; so are renderers that no longer exist.
+        private static void Forget(HashSet<Material> live)
+        {
+            List<Material> gone = null;
+            foreach (var kv in _orig)
+                if (kv.Key == null || !live.Contains(kv.Key)) (gone ??= new List<Material>()).Add(kv.Key);
+            if (gone != null)
+                foreach (Material m in gone)
+                {
+                    if (m != null)
+                    {
+                        int queue = m.renderQueue;
+                        m.shader = _orig[m];
+                        m.renderQueue = queue;
+                    }
+                    _orig.Remove(m);
+                    if (_stamps.TryGetValue(m, out Material s))
+                    {
+                        if (s != null) Object.Destroy(s);
+                        _stamps.Remove(m);
+                    }
+                }
+            _roads.RemoveWhere(x => x == null);
+            _stamped.RemoveAll(x => x == null);
+            List<MeshRenderer> lost = null;
+            foreach (var kv in _origProbes)
+                if (kv.Key == null) (lost ??= new List<MeshRenderer>()).Add(kv.Key);
+            if (lost != null) foreach (MeshRenderer x in lost) _origProbes.Remove(x);
         }
 
         // Give every road its depth stamp (the pre-mask behaviour). Called when the road mask can't be used.

@@ -47,9 +47,9 @@ Every setting applies live, mid-raid.
 |---|---|---|
 | Enabled | On | Turning it off restores the game's own terrain shader. |
 | Displacement Mode | POM | POM, Tessellation or Hybrid. See below. |
-| Height | 0.045 | How deep the relief goes. |
+| Height | 0.035 | How deep the relief goes. |
 | Fade Start / Fade Distance | 15 / 20 | Where the effect starts fading and how far the fade runs. **The main performance setting.** |
-| Steps | 32 | Ray-march quality. Matters most when looking along the ground. |
+| Steps | 2 | Ray-march quality. Matters most when looking along the ground. |
 | Smoothing | 0 | Rounds the relief into softer shapes. |
 | Self Shadow | 0.1 | Strength of the stone shadows. 0 is off. |
 | Height AO | 1 | Strength of the crevice darkening. 0 is off. |

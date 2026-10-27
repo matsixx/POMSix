@@ -26,6 +26,10 @@ namespace POMSix
         {
             if (_running) yield break;
             _running = true;
+            // The mask materials are made anew for the roads of this map: kept, each held a gone map's road
+            // textures in memory (CopyPropertiesFromMaterial), and so did its key, the road material.
+            foreach (Material old in _maskMats.Values) if (old != null) Object.Destroy(old);
+            _maskMats.Clear();
             if (!PomConfig.RoadMask.Value || PomApplier.RoadMaskShader == null) { Clear(); _running = false; yield break; }
 
             Shader ours = PomApplier.RoadShader;
